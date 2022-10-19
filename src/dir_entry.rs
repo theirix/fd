@@ -10,7 +10,7 @@ use crate::filesystem::strip_current_dir;
 
 enum DirEntryInner {
     Normal(ignore::DirEntry),
-    BrokenSymlink(PathBuf),
+    BrokenSymlink{ path: PathBuf, depth: usize },
 }
 
 pub struct DirEntry {
@@ -27,9 +27,9 @@ impl DirEntry {
         }
     }
 
-    pub fn broken_symlink(path: PathBuf) -> Self {
+    pub fn broken_symlink(path: PathBuf, depth: usize) -> Self {
         Self {
-            inner: DirEntryInner::BrokenSymlink(path),
+            inner: DirEntryInner::BrokenSymlink{ path, depth },
             metadata: OnceCell::new(),
         }
     }
@@ -37,14 +37,14 @@ impl DirEntry {
     pub fn path(&self) -> &Path {
         match &self.inner {
             DirEntryInner::Normal(e) => e.path(),
-            DirEntryInner::BrokenSymlink(pathbuf) => pathbuf.as_path(),
+            DirEntryInner::BrokenSymlink{ path: pathbuf, .. } => pathbuf.as_path(),
         }
     }
 
     pub fn into_path(self) -> PathBuf {
         match self.inner {
             DirEntryInner::Normal(e) => e.into_path(),
-            DirEntryInner::BrokenSymlink(p) => p,
+            DirEntryInner::BrokenSymlink{ path: p, .. } => p,
         }
     }
 
@@ -69,7 +69,7 @@ impl DirEntry {
     pub fn file_type(&self) -> Option<FileType> {
         match &self.inner {
             DirEntryInner::Normal(e) => e.file_type(),
-            DirEntryInner::BrokenSymlink(_) => self.metadata().map(|m| m.file_type()),
+            DirEntryInner::BrokenSymlink{ .. } => self.metadata().map(|m| m.file_type()),
         }
     }
 
@@ -77,17 +77,15 @@ impl DirEntry {
         self.metadata
             .get_or_init(|| match &self.inner {
                 DirEntryInner::Normal(e) => e.metadata().ok(),
-                DirEntryInner::BrokenSymlink(path) => path.symlink_metadata().ok(),
+                DirEntryInner::BrokenSymlink{ path, .. } => path.symlink_metadata().ok(),
             })
             .as_ref()
     }
 
-    /// Returns true if the entry has the depth greater or equal compared to `depth`
-    pub fn deeper(&self, depth: usize) -> bool {
+    pub fn depth(&self) -> usize {
         match &self.inner {
-            DirEntryInner::Normal(e) => e.depth() >= depth,
-            // broken symlink passes match if it is just longer thatn the `depth`
-            DirEntryInner::BrokenSymlink(p) => p.components().count() - 1 >= depth,
+            DirEntryInner::Normal(e) => e.depth(),
+            DirEntryInner::BrokenSymlink{ depth, .. } => *depth,
         }
     }
 }

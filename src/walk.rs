@@ -420,7 +420,11 @@ fn spawn_senders(
                                 .ok()
                                 .map_or(false, |m| m.file_type().is_symlink()) =>
                     {
-                        DirEntry::broken_symlink(path)
+                        // The documentation for ignore::Error::depth says that it returns the
+                        // depth "if this error was generated from a recursive directory iterator",
+                        // which it is here.
+                        let depth = inner_err.depth().unwrap();
+                        DirEntry::broken_symlink(path, depth)
                     }
                     _ => {
                         return match tx_thread.send(WorkerResult::Error(ignore::Error::WithPath {
@@ -441,7 +445,7 @@ fn spawn_senders(
             };
 
             if let Some(min_depth) = config.min_depth {
-                if !entry.deeper(min_depth) {
+                if entry.depth() < min_depth {
                     return ignore::WalkState::Continue;
                 }
             }
